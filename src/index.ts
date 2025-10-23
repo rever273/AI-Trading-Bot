@@ -235,7 +235,7 @@ async function runOnceMulti(sinceStartMs: number, invocations: number) {
     //         //     invalidation_condition: 'Price breaks below 109886 with increased volume and OI',
     //         // },
     //     },
-    // };
+    //  };
 
     // применяем решения по каждому символу отдельно
     let cnt = 0;

@@ -9,7 +9,7 @@ const client = new OpenAI({
 });
 
 export async function askAI(prompt: string): Promise<AiDecision> {
-    const t0 = Date.now();
+    // const t0 = Date.now();
 
     const systemInstructions = [
         `You are an autonomous trading AI for crypto perpetuals on Hyperliquid.`,
@@ -66,7 +66,7 @@ export async function askAI(prompt: string): Promise<AiDecision> {
     const end = raw.lastIndexOf('}');
 
     if (start >= 0 && end > start) {
-        const t1 = Date.now();
+        // const t1 = Date.now();
         try {
             // logger.log(`[AI] Получен ответ за ${(t1 - t0) / 1000}s`);
             return JSON.parse(raw.slice(start, end + 1)) as AiDecision;
