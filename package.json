@@ -1,0 +1,28 @@
+{
+  "name": "ai-trading-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "cron": "^4.3.3",
+    "dotenv": "^17.2.3",
+    "hyperliquid": "^1.7.7",
+    "mongoose": "^8.19.2",
+    "nodemon": "^3.1.10",
+    "openai": "^6.5.0"
+  },
+  "devDependencies": {
+    "@types/cron": "^2.0.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
