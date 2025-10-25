@@ -4,6 +4,12 @@ import type { Candle, FundingOi } from '../types.js';
 
 export type Interval = '1m' | '3m' | '5m' | '15m' | '1h' | '4h';
 
+let midsCache: { data: Record<string, string>; ts: number } | null = null;
+const MIDS_TTL_MS = 2000;
+
+let ctxCache: { ctx: any; ts: number } | null = null;
+const CTX_TTL_MS = 10000;
+
 function intervalMs(interval: Interval): number {
     switch (interval) {
         case '1m':
@@ -27,13 +33,15 @@ function intervalMs(interval: Interval): number {
  * Свечи через корректную сигнатуру getCandleSnapshot:
  * позиционные аргументы: (coin, interval, startTime, endTime, limit?)
  */
-export async function getCandles(coin: string, interval: Interval, points: number): Promise<Candle[]> {
+export async function getCandles(symbolOrCoin: string, interval: Interval, points: number): Promise<Candle[]> {
+    // Всегда чистим до 'BTC' / 'ETH'
+    const coin = symbolOrCoin.includes('-') ? symbolOrCoin.split('-')[0] : symbolOrCoin;
+
     const endTime = Date.now();
     const startTime = endTime - intervalMs(interval) * (points + 50);
     const hl = getHlClient();
 
     const raw: any[] = await hl.info.getCandleSnapshot(coin, interval, startTime, endTime);
-
     const sliced = raw.slice(-points);
     return sliced.map((c: any) => ({
         t: Number(c.t),
@@ -42,7 +50,6 @@ export async function getCandles(coin: string, interval: Interval, points: numbe
         l: Number(c.l),
         c: Number(c.c),
         v: Number(c.v),
-        // Опциональные поля (если понадобятся)
         T: c.T !== undefined ? Number(c.T) : undefined,
         i: c.i,
         s: c.s,
@@ -53,15 +60,17 @@ export async function getCandles(coin: string, interval: Interval, points: numbe
 /** Funding/ OI через perpetuals.getMetaAndAssetCtxs() */
 export async function getFundingAndOI(coin: string): Promise<FundingOi> {
     const hl = getHlClient();
-    const ctx: any = await hl.info.perpetuals.getMetaAndAssetCtxs();
+    const now = Date.now();
+    if (!ctxCache || now - ctxCache.ts > CTX_TTL_MS) {
+        ctxCache = { ctx: await hl.info.perpetuals.getMetaAndAssetCtxs(), ts: now };
+    }
+    const ctx: any = ctxCache.ctx;
 
     const universe: Array<{ name: string }> = ctx?.universe ?? ctx?.perpetuals?.universe ?? ctx?.[0]?.universe ?? [];
-
-    const idx = universe.findIndex((u: { name: string }) => u?.name === coin);
+    const idx = universe.findIndex((u) => u?.name === coin);
     if (idx < 0) throw new Error(`Coin ${coin} not found in perpetuals universe`);
 
     const assetCtxs: any[] = ctx?.perpetuals?.assetCtxs ?? ctx?.assetCtxs ?? ctx?.[1] ?? [];
-
     const row = assetCtxs[idx] ?? {};
     return {
         openInterestLatest: Number(row.openInterest ?? row.oi ?? 0),
@@ -73,7 +82,8 @@ export async function getFundingAndOI(coin: string): Promise<FundingOi> {
 /** Текущий mid-price: getAllMids() → Record<string,string> */
 export async function getMarkPrice(symbolOrCoin: string): Promise<number> {
     const hl = getHlClient();
-    const mids: Record<string, string> = await hl.info.getAllMids();
+    // const mids: Record<string, string> = await hl.info.getAllMids();
+    const mids = await getAllMidsCached();
 
     // Убираем возможный суффикс, чтобы работать с чистым именем монеты
     const baseCoin = symbolOrCoin.split('-')[0]; // 'ETH-PERP' -> 'ETH', 'ETH' -> 'ETH'
@@ -86,4 +96,13 @@ export async function getMarkPrice(symbolOrCoin: string): Promise<number> {
         throw new Error(`Mid price not found for ${baseCoin}`);
     }
     return parseFloat(mids[key]);
+}
+
+async function getAllMidsCached(): Promise<Record<string, string>> {
+    const now = Date.now();
+    if (midsCache && now - midsCache.ts < MIDS_TTL_MS) return midsCache.data;
+    const hl = getHlClient();
+    const data = await hl.info.getAllMids();
+    midsCache = { data, ts: now };
+    return data;
 }

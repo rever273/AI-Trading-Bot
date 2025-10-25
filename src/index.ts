@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import { CFG } from './config.js';
 import { connectDB } from './db/connect.js';
-import { sleep, logger } from './utils/functions.js';
+import { sleep, logger, withRetries } from './utils/functions.js';
 import { getCandles, getFundingAndOI, getMarkPrice } from './hl/market.js';
 import type { Candle, AccountSummary, IntradayBundle, FourHourBundle, FundingOi } from './types.js';
 import { ema, macd, rsi, atr } from './indicators/indicators.js';
@@ -108,12 +108,19 @@ async function collectAccountSummary(): Promise<AccountSummary> {
 }
 
 async function buildCoinData(symbol: string): Promise<CoinPromptData> {
-    const intraday: Candle[] = await getCandles(symbol, '3m', 120);
-    const h4: Candle[] = await getCandles(symbol, '4h', 200);
+    const intraday: Candle[] = await withRetries(() => getCandles(symbol, '3m', 120), `getCandles(3m, ${symbol})`);
+    const h4: Candle[] = await withRetries(() => getCandles(symbol, '4h', 200), `getCandles(4h, ${symbol})`);
 
-    const { openInterestLatest, fundingRate } = await getFundingAndOI(symbol);
+    const { openInterestLatest, fundingRate } = await withRetries(() => getFundingAndOI(symbol), `getFundingAndOI(${symbol})`);
     const { avg: oiAvg } = updateOiAverage(openInterestLatest);
-    const markPx = await getMarkPrice(symbol);
+    const markPx = await withRetries(() => getMarkPrice(symbol), `getMarkPrice(${symbol})`);
+
+    // const intraday: Candle[] = await getCandles(symbol, '3m', 120);
+    // const h4: Candle[] = await getCandles(symbol, '4h', 200);
+
+    // const { openInterestLatest, fundingRate } = await getFundingAndOI(symbol);
+    // const { avg: oiAvg } = updateOiAverage(openInterestLatest);
+    // const markPx = await getMarkPrice(symbol);
 
     // 3m серийки — mid
     const mid3m = intraday.map((c) => (c.h + c.l) / 2);
@@ -182,10 +189,17 @@ async function runOnceMulti(sinceStartMs: number, invocations: number) {
 
     for (const symbol of symbols) {
         try {
-            coins.push(await buildCoinData(symbol));
+            const coinData = await buildCoinData(symbol);
+            coins.push(coinData);
+            // console.log(`==>[collect] Collected data for ${symbol}`);
         } catch (e) {
-            console.error('[collect] error for', symbol, e);
+            console.error('[collect]Failed to collect data for', symbol, e);
         }
+    }
+
+    if (coins.length === 0) {
+        logger.error('[runOnceMulti] No data collected for any symbols. Aborting this run.');
+        return;
     }
 
     // Состояние аккаунта/позиции/ордера
@@ -203,7 +217,7 @@ async function runOnceMulti(sinceStartMs: number, invocations: number) {
         account,
     });
 
-    // console.log('PROMPT==>\n', prompt);
+    console.log('PROMPT==>\n', prompt);
 
     const rawModelResponse = await askAI(prompt);
 
@@ -289,9 +303,10 @@ async function main() {
 
     // Запускаем cron-задачу строго каждые X минут
     const cronInterval = `*/${Math.floor(CFG.scheduler.pollMs / 60000)} * * * *`; // '*/2 * * * *'
+    const jitterSec = Math.floor(Math.random() * 5) + 3; // 3..8 сек
 
     const job = new CronJob(
-        `0 ${cronInterval}`,
+        `${jitterSec} ${cronInterval}`,
         task,
         null,
         true, // Start the job right now

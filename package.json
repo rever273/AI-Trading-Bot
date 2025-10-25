@@ -18,7 +18,8 @@
     "hyperliquid": "^1.7.7",
     "mongoose": "^8.19.2",
     "nodemon": "^3.1.10",
-    "openai": "^6.5.0"
+    "openai": "^6.5.0",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/cron": "^2.0.1",

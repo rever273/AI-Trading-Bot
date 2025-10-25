@@ -2,6 +2,11 @@ import { Hyperliquid } from 'hyperliquid';
 import { CFG } from '../config.js';
 import { logger, sleep } from '../utils/functions.js';
 
+import dns from 'node:dns';
+import { setGlobalDispatcher, Agent } from 'undici';
+dns.setDefaultResultOrder('ipv4first'); // избегаем проблем IPv6
+setGlobalDispatcher(new Agent({ keepAliveTimeout: 10_000, keepAliveMaxTimeout: 15_000 }));
+
 let _hlInstance: Hyperliquid | null = null;
 
 /**
@@ -25,6 +30,9 @@ export async function initializeHyperliquidClient() {
                 testnet: CFG.hl.testnet,
                 enableWs: false,
                 walletAddress: CFG.hl.walletAddress,
+                // ↓ уменьшаем фоновую болтовню SDK
+                disableAssetMapRefresh: true, // полностью выключить авто-рефреш
+                // assetMapRefreshIntervalMs: 300000,  // или, если нужен — растянуть до 5 минут
             });
 
             // Попробуем выполнить простой запрос, чтобы убедиться, что API доступно
